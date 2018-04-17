@@ -6,6 +6,8 @@ import csv
 import math
 from astropy.io import fits
 import os.path
+#import fitsio to read in t9 allStar File
+import fitsio
 from pathlib import Path
 
 #Calculate R-Values for given ranges
@@ -123,8 +125,8 @@ apoID = bins['Apogee_ID']
 ids = bins['ID']
 
 #include options for running the analysis only on the training sample
-apogeeIDs = apoID
-locationIDs = locID
+#apogeeIDs = apoID
+#locationIDs = locID
 
 binApoID = []
 binLocID = []
@@ -159,21 +161,43 @@ apo= []
 # setenv RESULTS_VERS "l31c.2"
 
 #COMMANDS TO READ IN AND PROCESS FULL DR14 SAMPLE (sans commissioning data)
-#allStarDR14 = apread.allStar(rmcommissioning=False,main=False,ak=True,akvers='targ',adddist=False)
-#locationIDs = allStarDR14['LOCATION_ID']
-#apogeeIDs = allStarDR14['APOGEE_ID']
-#apogeeIDs = [s.decode('utf-8') for s in apogeeIDs]
+allStar = apread.allStar(rmcommissioning=False,main=False,ak=True,akvers='targ',adddist=False)
+
+#COMMAND TO READ IN PREDR15 ALL STAR FILE
+#allStar = fitsio.read( '/Volumes/CoveyData/APOGEE_Spectra/preDR15/allStar-t9-l31c-58158.fits' )
+
+locationIDs = allStar['LOCATION_ID']
+telescopeIDs = allStar['TELESCOPE']
+fieldIDs = allStar['FIELD']
+apogeeIDs = allStar['APOGEE_ID']
+apogeeIDs = [s.decode('utf-8') for s in apogeeIDs]
+
+APOGEE1_fields = ['203+04', 'IC348', 'LAMBDAORI-A', 'LAMBDAORI-B', 'N1333', 'IC348', 'ORIONA', 'ORIONB', 'ORIONB-A', 'ORIONB-B', 'ORIONC', 'ORIOND', 'ORIONE', 'ORIONOB1AB-F', 'PLEIADES-E', 'Pleiades']
 
 #Run routine on DR14 to find R values, R ratios, x-ranges and HJDs
 #for j in range(len(locationIDs)):
 for j in range(len(locationIDs)):
         #print(j)
         locationID = locationIDs[j]
+        telescope = telescopeIDs[j]
+        field = fieldIDs[j]
         apogeeID = apogeeIDs[j]
-        #File path to open .fits 
-        my_file = Path('/Volumes/CoveyData/APOGEE_Spectra/APOGEE2_DR14/dr14/apogee/spectro/redux/r8/stars/apo25m/'+str(locationID)+'/'+'apStar-r8-'+str(apogeeID)+'.fits')
-        try: 
+        #File path to open .fits
+        this_telescope = str.strip(str(telescope, 'utf-8'))
+        this_field = str.strip(str(field, 'utf-8'))
+        
+        ##test to determine if field is on my list of DR14 YSO fields 
+        if this_field in APOGEE1_fields:
             path = '/Volumes/CoveyData/APOGEE_Spectra/APOGEE2_DR14/dr14/apogee/spectro/redux/r8/stars/apo25m/'+str(locationID)+'/'+'apStar-r8-'+str(apogeeID)+'.fits'
+        
+        ##test to determine if field directory exists for pre-DR15 YSO data
+        #   #my_file = Path('/Volumes/CoveyData/APOGEE_Spectra/preDR15/apogee2/spectro/redux/stars/'+this_telescope+'/'+this_field+'/apStar-t9-'+str(apogeeID)+'.fits')
+        #file_there = os.path.isfile('/Volumes/CoveyData/APOGEE_Spectra/preDR15/apogee2/spectro/redux/stars/'+this_telescope+'/'+this_field+'/apStar-t9-'+str(apogeeID)+'.fits')
+        #if file_there == True:  
+        #    path = '/Volumes/CoveyData/APOGEE_Spectra/preDR15/apogee2/spectro/redux/stars/'+ this_telescope + '/'+this_field+'/apStar-t9-'+str(apogeeID)+'.fits'
+
+            print('file #', j, apogeeID)
+            #print(path)
             data = fits.open(path)
             point = data[9]
             xccf = point.data[0][29] # Proper location of x values of the CCF
@@ -205,6 +229,8 @@ for j in range(len(locationIDs)):
                         #plt.legend(loc='upper right')
                         #plt.show()
                         xr.append(x_range)
+                        #print(x_range)
+                        #print(xr[visit])
                         SNR.append(snr) 
                         R151 = calcR(ccf,75)
                         partr151 = R151[1]
@@ -229,14 +255,16 @@ for j in range(len(locationIDs)):
                     else:
                         pass
 
-        except FileNotFoundError:
-            print('oops -- no file!')
-            print('file #',j,path)
-            pass
+        #except FileNotFoundError:
+        #    print('oops -- no file!')
+        #    print('file #',j,path)
+        #    pass
 
 #Find and replace all nan values with 9 which will be prominent in log space
-x_ranges = [9 if math.isnan(x) else x for x in xr]
-Xranges = [9 if math.isinf(y) else y for y in x_ranges]
+x_ranges = [10000. if math.isnan(x) else x for x in xr]
+Xranges = [10000. if math.isinf(y) else y for y in x_ranges]
+no_zero_Xranges = [1000. if z == 0 else z for z in Xranges]
+
 
 #Have DR14 sent to arrays function that also convert arrays into log space
 newR51 = arrays(oldR51)
@@ -244,7 +272,7 @@ newR101 = arrays(oldR101)
 newR151 = arrays(oldR151)
 #BinR1 = arrays(binR1)
 #BinR2 = arrays(binR2)
-new_Xrange = arrays(Xranges)
+new_Xrange = arrays(no_zero_Xranges)
 peak_val = arrays(peak_value)
 
 #Find and replace all nan values with 9 which will be prominent in log space
@@ -300,8 +328,8 @@ df['Peak_value'] = peak_val
 
 
 #save output for main DR14 catalog
-#df.to_csv('DR14StatsCatalog.csv')
+df.to_csv('YSO_DR14_StatsCatalog.csv')
 
 #Option for saving output for just the training set stars
-df.to_csv('TrainingSet_StatsCatalog.csv')
+#df.to_csv('TrainingSet_StatsCatalog.csv')
      
