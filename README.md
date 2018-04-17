@@ -1,2 +1,1 @@
-. YSO_SB2s
-
+# YSO_SB2s
